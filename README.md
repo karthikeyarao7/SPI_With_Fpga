@@ -1,98 +1,134 @@
-  Project Overview
-This project demonstrates a complete browser-to-FPGA communication pipeline where clicking a switch on a webpage sends a signal through WebSocket, through an ESP32 microcontroller via SPI, and directly controls LEDs on a Digilent ZedBoard (Xilinx Zynq XC7Z020) FPGA development board.
-It is a hands-on implementation of:
+# FPGA SPI Web Dashboard
 
-SPI slave design in Verilog HDL
-Real-time WebSocket communication
-ESP32 as a wireless SPI master bridge
-FPGA digital design with synchronous logic and metastability handling
+> Control ZedBoard LEDs in real time from a browser — Browser → WebSocket → ESP32 → SPI → FPGA → LED
 
+![Simulation](https://img.shields.io/badge/Simulation-7%2F7%20PASS-brightgreen)
+![License](https://img.shields.io/badge/License-MIT-blue)
+![Board](https://img.shields.io/badge/Board-ZedBoard-red)
+![Language](https://img.shields.io/badge/HDL-Verilog-blueviolet)
 
-  Simulation: 7/7 tests passed in Vivado XSim
+---
 
+## What This Project Does
 
- How It Works
-User clicks switch on browser
-        ↓  WebSocket (WiFi)
-ESP32 receives "LED:01"
-        ↓  SPI (CS + SCLK + MOSI)
-FPGA shift register assembles byte
-        ↓  data_ready pulse
-LED controller latches output
-        ↓  3.3V on FPGA pin
-ZedBoard LED lights up ✓
-Total click-to-LED latency: under 10ms
+Click a switch on a webpage → LED lights up on a real FPGA board.
 
-🗂️ Repository Structure
-📦 FPGA_SPI_Web_Dashboard
- ┣ 📂 rtl
- ┃ ┣ spi_slave.v          → SPI receiver with double-flop synchronizer
- ┃ ┣ led_controller.v     → LED output register
- ┃ ┗ top.v                → Top-level wrapper
- ┃
- ┣ 📂 sim
- ┃ ┗ testbench.v          → Self-checking testbench (7 test cases)
- ┃
- ┣ 📂 constraints
- ┃ ┗ zedboard_constraints.xdc  → ZedBoard pin & timing constraints
- ┃
- ┣ 📂 esp32
- ┃ ┗ spi_master.ino       → Arduino firmware (WebSocket server + SPI master)
- ┃
- ┣ 📂 web
- ┃ ┗ index.html           → Complete web dashboard (no server needed)
- ┃
- ┗ README.md
+The signal travels like this:
 
-  Hardware Required
-ComponentDetailsFPGA BoardDigilent ZedBoard (Xilinx Zynq XC7Z020)MicrocontrollerESP32 DevKit (any WROOM variant)Jumper Wires5× Male-to-MaleUSB Cables2× (one per board)NetworkWiFi 2.4GHz (ESP32 + PC on same network)
+```
+Browser  →  WebSocket (WiFi)  →  ESP32  →  SPI  →  FPGA  →  LED ON
+```
 
-🔧 Wiring (ESP32 ↔ ZedBoard PMOD JA)
-ESP32 GPIO 18  ──────→  PMOD JA Pin 1   (SCLK)
-ESP32 GPIO 23  ──────→  PMOD JA Pin 2   (MOSI)
-ESP32 GPIO 19  ←──────  PMOD JA Pin 3   (MISO)
-ESP32 GPIO 5   ──────→  PMOD JA Pin 4   (CS_N)
-ESP32 GND      ──────→  PMOD JA GND     (GND)
+Total delay: **under 10ms** from click to LED glow.
 
-⚠️ Both boards operate at 3.3V logic — do NOT connect 5V lines to PMOD pins.
-⚠️ Shared GND is mandatory for SPI to work.
+---
 
+## Repository Structure
 
-  SPI Protocol Details
-ParameterValueModeSPI Mode 0 (CPOL=0, CPHA=0)Bit OrderMSB FirstClock Speed1 MHzPacket Size8 bits (1 byte)CS PolarityActive LOW
-Command Protocol
-Browser sendsByte (hex)BinaryLEDs ONLED:000x000000 0000All OFFLED:010x010000 0001LD0LED:800x801000 0000LD7LED:FF0xFF1111 1111All ONLED:AA0xAA1010 1010LD1,3,5,7LED:550x550101 0101LD0,2,4,6
+```
+FPGA_SPI_Web_Dashboard/
+├── rtl/
+│   ├── spi_slave.v            SPI receiver (double-flop synchronizer)
+│   ├── led_controller.v       LED output register
+│   └── top.v                  Top-level wrapper
+├── sim/
+│   └── testbench.v            Self-checking testbench — 7 test cases
+├── constraints/
+│   └── zedboard_constraints.xdc   Pin and timing constraints
+├── esp32/
+│   └── spi_master.ino         Arduino firmware (WebSocket + SPI master)
+├── web/
+│   └── index.html             Web dashboard (open directly in browser)
+└── README.md
+```
 
-  RTL Design
-Core Shift Register Logic (spi_slave.v)
-verilog// Double-flop synchronizer — prevents metastability
-always @(posedge clk) begin
-    sclk_r1 <= sclk; sclk_r2 <= sclk_r1;
-    mosi_r1 <= mosi; mosi_r2 <= mosi_r1;
-end
+---
 
-// Rising edge detection
+## Hardware
+
+| Component | Details |
+|---|---|
+| FPGA Board | Digilent ZedBoard — Zynq XC7Z020 |
+| Microcontroller | ESP32 DevKit (any WROOM variant) |
+| Jumper Wires | 5× Male-to-Male |
+| USB Cables | 2× (one per board) |
+| Network | WiFi 2.4GHz — ESP32 and PC on same network |
+
+---
+
+## Wiring
+
+```
+ESP32 GPIO 18  ──────→  ZedBoard PMOD JA Pin 1   (SCLK)
+ESP32 GPIO 23  ──────→  ZedBoard PMOD JA Pin 2   (MOSI)
+ESP32 GPIO 19  ←──────  ZedBoard PMOD JA Pin 3   (MISO)
+ESP32 GPIO 5   ──────→  ZedBoard PMOD JA Pin 4   (CS)
+ESP32 GND      ──────→  ZedBoard PMOD JA GND     (GND)
+```
+
+> Both boards are 3.3V logic. Do NOT connect 5V to PMOD pins. Shared GND is mandatory.
+
+---
+
+## SPI Protocol
+
+| Setting | Value |
+|---|---|
+| Mode | SPI Mode 0 (CPOL=0, CPHA=0) |
+| Speed | 1 MHz |
+| Bit Order | MSB First |
+| Packet Size | 8 bits — 1 byte |
+| CS Polarity | Active LOW |
+
+Each bit in the byte maps directly to one LED:
+
+| Byte sent | Binary | LEDs ON |
+|---|---|---|
+| `0x01` | `00000001` | LD0 only |
+| `0x80` | `10000000` | LD7 only |
+| `0xFF` | `11111111` | All 8 LEDs |
+| `0x00` | `00000000` | All OFF |
+| `0xAA` | `10101010` | LD1, LD3, LD5, LD7 |
+
+---
+
+## Core Verilog Logic
+
+**Shift register in spi_slave.v** — assembles incoming bits into a byte:
+
+```verilog
+// Detect rising edge of SCLK
 wire sclk_rising = (sclk_r1 && !sclk_r2);
 
-// Shift register — MSB first
+// Shift in one bit per clock edge, MSB first
 always @(posedge clk) begin
     if (!cs_n && sclk_rising) begin
         shift_reg <= {shift_reg[6:0], mosi_r2};
         bit_count <= bit_count + 1;
         if (bit_count == 3'd7) begin
             rx_data    <= {shift_reg[6:0], mosi_r2};
-            data_ready <= 1'b1;   // Pulse for one clock cycle
+            data_ready <= 1'b1;
         end
     end
 end
-LED Controller Logic (led_controller.v)
-verilogalways @(posedge clk) begin
-    if (data_ready)
-        leds <= rx_data;   // Direct map: byte → 8 LEDs
-end
+```
 
-  Simulation Results
-Tested in Vivado XSim 2025.2 using run all in the Tcl console:
+**LED controller in led_controller.v** — latches byte to LED outputs:
+
+```verilog
+always @(posedge clk) begin
+    if (data_ready)
+        leds <= rx_data;
+end
+```
+
+---
+
+## Simulation Results
+
+Run in **Vivado XSim 2025.2** — type `run all` in the Tcl Console:
+
+```
 === SPI FPGA LED Testbench ===
 PASS [ LED0_ON]: LEDs = 0x01
 PASS [ LED7_ON]: LEDs = 0x80
@@ -105,67 +141,99 @@ PASS [SW_COMBO]: LEDs = 0xa5
 TOTAL: 7 PASS, 0 FAIL
 >>> ALL TESTS PASSED <<<
 ==============================
+```
 
-  Quick Start
-Step 1 — Vivado Project Setup
+---
 
-Create RTL project → select part xc7z020clg484-1 or board ZedBoard
-Add design sources: spi_slave.v, led_controller.v, top.v
-Set top.v as top module
-Add constraints: zedboard_constraints.xdc
-Add simulation source: testbench.v
+## How to Run This Project
 
-Step 2 — Simulate
-Flow Navigator → Simulation → Run Simulation → Run Behavioral Simulation
-Tcl Console: run all
-All 7 tests must show PASS.
-Step 3 — Synthesize → Implement → Bitstream
-Flow Navigator → Run Synthesis → Run Implementation → Generate Bitstream
-Step 4 — Program ZedBoard
-Open Hardware Manager → Open Target → Auto Connect
-Right-click xc7z020 → Program Device → select top.bit → Program
-Step 5 — ESP32 Firmware
+**Step 1 — Vivado Setup**
 
-Install WebSockets library by Markus Sattler in Arduino IDE
-Edit spi_master.ino — set your WiFi SSID and password
-Upload to ESP32 → note the IP address from Serial Monitor
+- Create new RTL project, select part `xc7z020clg484-1` or board ZedBoard
+- Add design sources: `spi_slave.v`, `led_controller.v`, `top.v`
+- Set `top.v` as top module
+- Add constraints: `zedboard_constraints.xdc`
+- Add simulation source: `testbench.v`
 
-Step 6 — Open Web Dashboard
+**Step 2 — Simulate**
 
-Open web/index.html in browser (Chrome/Firefox)
-Enter ESP32 IP address → click Connect
-Click any switch → ZedBoard LED lights up ✓
+- Flow Navigator → Simulation → Run Behavioral Simulation
+- In Tcl Console type: `run all`
+- All 7 tests must show PASS
 
+**Step 3 — Build**
 
-  Future Improvements
+- Run Synthesis → Run Implementation → Generate Bitstream
 
- Full-duplex SPI — read ZedBoard switch states back to browser
- CPOL & CPHA configurable modes
- FSM-based multi-byte packet controller
- OLED display integration via I2C
- Sensor monitoring dashboard
- FIFO buffering support
- FPGA protocol analyzer
- Mobile-responsive web dashboard
+**Step 4 — Program the FPGA**
 
+- Open Hardware Manager → Auto Connect
+- Right-click xc7z020 → Program Device → select `top.bit`
 
-  Learning Outcomes
+**Step 5 — ESP32 Firmware**
 
-SPI protocol implementation at hardware level
-Synchronous digital design with metastability handling
-Double-flop synchronizer design pattern
-FPGA I/O constraints and pin mapping
-ESP32 WebSocket server programming
-Real-time browser-hardware communication
-Hardware debugging and simulation methodology
+- Install the **WebSockets** library by Markus Sattler in Arduino IDE
+- Open `esp32/spi_master.ino`
+- Change WiFi SSID and password to your network
+- Upload to ESP32
+- Open Serial Monitor at 115200 baud — note the IP address shown
 
+**Step 6 — Web Dashboard**
 
-  Technologies Used
-LayerTechnologyHardware DescriptionVerilog HDLFPGA ToolchainXilinx Vivado 2025.2FPGA BoardDigilent ZedBoard (Zynq XC7Z020)MicrocontrollerESP32 (Arduino framework)Wireless ProtocolWebSocket (port 81)FrontendHTML5 / CSS3 / JavaScriptSimulationVivado XSimDebuggingLogic Analyzer / Serial Monitor
+- Open `web/index.html` in Chrome or Firefox
+- Enter the ESP32 IP address and click Connect
+- Click any switch — the matching LED lights up on ZedBoard ✓
 
-  License
-This project is open-source and available under the MIT License.
+---
 
-  Author
-Karthikeya Rao
+## Technologies Used
+
+| Layer | Tool / Language |
+|---|---|
+| Hardware Description | Verilog HDL |
+| FPGA Toolchain | Xilinx Vivado 2025.2 |
+| FPGA Board | Digilent ZedBoard (Zynq XC7Z020) |
+| Microcontroller | ESP32 (Arduino framework) |
+| Wireless Protocol | WebSocket on port 81 |
+| Frontend | HTML5, CSS3, JavaScript |
+| Simulation | Vivado XSim |
+
+---
+
+## Future Improvements
+
+- [ ] Full-duplex SPI — read ZedBoard switch states back to browser
+- [ ] CPOL and CPHA configurable modes
+- [ ] Multi-byte SPI packet support
+- [ ] FSM-based advanced controller
+- [ ] OLED display integration
+- [ ] FIFO buffering
+- [ ] Sensor monitoring dashboard
+- [ ] Mobile-responsive web UI
+
+---
+
+## Learning Outcomes
+
+- SPI protocol implementation at hardware level
+- Synchronous digital design and clock domain crossing
+- Double-flop synchronizer for metastability prevention
+- FPGA I/O constraints and pin mapping in XDC
+- ESP32 WebSocket server programming
+- Real-time browser to hardware communication
+
+---
+
+## License
+
+MIT License — free to use, modify, and distribute.
+
+---
+
+## Author
+
+**Karthikeya Rao**  
 VLSI Design & Embedded Systems Enthusiast
+
+Feel free to fork, improve, and raise pull requests.  
+If this project helped you, please give it a ⭐
